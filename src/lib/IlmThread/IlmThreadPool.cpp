@@ -304,14 +304,18 @@ DefaultThreadPoolProvider::setNumThreads (int count)
     std::lock_guard<std::mutex> lock (_data.threadMutex);
 
     size_t desired = static_cast<size_t>(count);
+    size_t toSync  = 0;
     if (desired > _data.threads.size())
     {
         //
         // Add more threads
         //
 
-        while (_data.threads.size() < desired)
+        while (_data.threads.size () < desired)
+        {
             _data.threads.push_back (new DefaultWorkerThread (&_data));
+            toSync++;
+        }
     }
     else if ((size_t)count < _data.threads.size())
     {
@@ -325,11 +329,23 @@ DefaultThreadPoolProvider::setNumThreads (int count)
         // Add in new threads
         //
 
-        while (_data.threads.size() < desired)
+        while (_data.threads.size () < desired)
+        {
             _data.threads.push_back (new DefaultWorkerThread (&_data));
+            toSync++;
+        }
     }
 
     _data.hasThreads = !(_data.threads.empty());
+	
+	// make sure the threads have actually started
+    for (size_t i = 0; i != toSync; ++i)
+    {
+        if (_data.threads[i]->joinable ())
+        {
+            _data.threadSemaphore.wait ();
+        }
+    }
 }
 
 void
@@ -393,7 +409,7 @@ DefaultThreadPoolProvider::finish ()
         if (_data.threads[i]->joinable())
         {
             _data.taskSemaphore.post();
-            _data.threadSemaphore.wait();
+          //  _data.threadSemaphore.wait();
         }
     }
 
